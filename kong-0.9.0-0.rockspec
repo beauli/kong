@@ -16,7 +16,7 @@ dependencies = {
   "penlight == 1.3.2",
   "mediator_lua == 1.1.2",
   "lua-resty-http == 0.08",
-  "lua-resty-jit-uuid == 0.0.4",
+  "lua-resty-jit-uuid == 0.0.5",
   "multipart == 0.3",
   "version == 0.2",
   "lapis == 1.5.1",
