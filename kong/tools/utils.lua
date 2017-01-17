@@ -8,24 +8,36 @@
 -- @license [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
 -- @module kong.tools.utils
 
-local url = require "socket.url"
-local uuid = require "resty.jit-uuid"
-local pl_stringx = require "pl.stringx"
 local ffi = require "ffi"
+local uuid = require "resty.jit-uuid"
 
-local fmt = string.format
-local type = type
-local pairs = pairs
-local ipairs = ipairs
-local re_find = ngx.re.find
-local tostring = tostring
-local table_sort = table.sort
-local table_concat = table.concat
-local table_insert = table.insert
-local string_find = string.find
+local C          = ffi.C
+local ffi_new    = ffi.new
+local ffi_str    = ffi.string
+local fmt        = string.format
+local type       = type
+local pairs      = pairs
+local ipairs     = ipairs
+local re_find    = ngx.re.find
+local tostring   = tostring
+local sort       = table.sort
+local concat     = table.concat
+local insert     = table.insert
+local find       = string.find
+local gsub       = string.gsub
 
 ffi.cdef[[
+typedef unsigned char u_char;
+
 int gethostname(char *name, size_t len);
+
+int RAND_bytes(u_char *buf, int num);
+
+unsigned long ERR_get_error(void);
+void ERR_load_crypto_strings(void);
+void ERR_free_strings(void);
+
+const char *ERR_reason_error_string(unsigned long e);
 ]]
 
 local _M = {}
@@ -34,23 +46,76 @@ local _M = {}
 -- @return string  The hostname
 function _M.get_hostname()
   local result
-  local C = ffi.C
   local SIZE = 128
 
-  local buf = ffi.new("unsigned char[?]", SIZE)
+  local buf = ffi_new("unsigned char[?]", SIZE)
   local res = C.gethostname(buf, SIZE)
 
   if res == 0 then
-    local hostname = ffi.string(buf, SIZE)
-    result = string.gsub(hostname, "%z+$", "")
+    local hostname = ffi_str(buf, SIZE)
+    result = gsub(hostname, "%z+$", "")
   else
-    local f = io.popen ("/bin/hostname")
+    local f = io.popen("/bin/hostname")
     local hostname = f:read("*a") or ""
     f:close()
-    result = string.gsub(hostname, "\n$", "")
+    result = gsub(hostname, "\n$", "")
   end
 
   return result
+end
+
+do
+  local pl_utils = require "pl.utils"
+
+  local _system_infos
+
+  function _M.get_system_infos()
+    if _system_infos then
+      return _system_infos
+    end
+
+    _system_infos = {
+      hostname = _M.get_hostname()
+    }
+
+    local ok, _, stdout = pl_utils.executeex("getconf _NPROCESSORS_ONLN")
+    if ok then
+      _system_infos.cores = tonumber(stdout:sub(1, -2))
+    end
+
+    ok, _, stdout = pl_utils.executeex("uname -a")
+    if ok then
+      _system_infos.uname = stdout:gsub(";", ","):sub(1, -2)
+    end
+
+    return _system_infos
+  end
+end
+
+do
+  local bytes_buf_t = ffi.typeof "char[?]"
+
+  function _M.get_rand_bytes(n_bytes)
+    local buf = ffi_new(bytes_buf_t, n_bytes)
+
+    if C.RAND_bytes(buf, n_bytes) == 0 then
+      -- get error code
+      local err_code = C.ERR_get_error()
+      if err_code == 0 then
+        return nil, "could not get SSL error code from the queue"
+      end
+
+      -- get human-readable error string
+      C.ERR_load_crypto_strings()
+      local err = C.ERR_reason_error_string(err_code)
+      C.ERR_free_strings()
+
+      return nil, "could not get random bytes (" ..
+                  "reason:" .. ffi_str(err) .. ") "
+    end
+
+    return ffi_str(buf, n_bytes)
+  end
 end
 
 local v4_uuid = uuid.generate_v4
@@ -59,13 +124,6 @@ local v4_uuid = uuid.generate_v4
 -- @function uuid
 -- @return string with uuid
 _M.uuid = uuid.generate_v4
-
---- Seeds the random generator, use with care.
--- Kong already seeds this once per worker process. It's 
--- dangerous to ever call it again. So ask yourself
--- "Do I feel lucky?" Well, do ya, punk?
--- @function uuid_seed
-_M.uuid_seed = uuid.seed
 
 --- Generates a random unique string
 -- @return string  The random string (a uuid without hyphens)
@@ -79,73 +137,81 @@ function _M.is_valid_uuid(str)
   return re_find(str, uuid_regex, 'ioj') ~= nil
 end
 
--- function below is more acurate, but invalidates previously accepted uuids and hence causes 
+-- function below is more acurate, but invalidates previously accepted uuids and hence causes
 -- trouble with existing data during migrations.
 -- see: https://github.com/thibaultcha/lua-resty-jit-uuid/issues/8
 -- function _M.is_valid_uuid(str)
 --  return str == "00000000-0000-0000-0000-000000000000" or uuid.is_valid(str)
 --end
 
-_M.split = pl_stringx.split
-_M.strip = pl_stringx.strip
+do
+  local pl_stringx = require "pl.stringx"
 
---- URL escape and format key and value
--- An obligatory url.unescape pass must be done to prevent double-encoding
--- already encoded values (which contain a '%' character that `url.escape` escapes)
-local function encode_args_value(key, value, raw)
-  if not raw then
-    key = url.unescape(key)
-    key = url.escape(key)
-  end
-  if value ~= nil then
-    if not raw then
-      value = url.unescape(value)
-      value = url.escape(value)
-    end
-    return fmt("%s=%s", key, value)
-  else
-    return key
-  end
+  _M.split = pl_stringx.split
+  _M.strip = pl_stringx.strip
 end
 
---- Encode a Lua table to a querystring
--- Tries to mimic ngx_lua's `ngx.encode_args`, but also percent-encode querystring values.
--- Supports multi-value query args, boolean values.
--- It also supports encoding for bodies (only because it is used in http_client for specs.
--- @TODO drop and use `ngx.encode_args` once it implements percent-encoding.
--- @see https://github.com/Mashape/kong/issues/749
--- @param[type=table] args A key/value table containing the query args to encode.
--- @param[type=boolean] raw If true, will not percent-encode any key/value and will ignore special boolean rules.
--- @treturn string A valid querystring (without the prefixing '?')
-function _M.encode_args(args, raw)
-  local query = {}
-  local keys = {}
+do
+  local url = require "socket.url"
 
-  for k in pairs(args) do
-    keys[#keys+1] = k
-  end
-
-  table_sort(keys)
-
-  for _, key in ipairs(keys) do
-    local value = args[key]
-    if type(value) == "table" then
-      for _, sub_value in ipairs(value) do
-        query[#query+1] = encode_args_value(key, sub_value, raw)
+  --- URL escape and format key and value
+  -- An obligatory url.unescape pass must be done to prevent double-encoding
+  -- already encoded values (which contain a '%' character that `url.escape` escapes)
+  local function encode_args_value(key, value, raw)
+    if not raw then
+      key = url.unescape(key)
+      key = url.escape(key)
+    end
+    if value ~= nil then
+      if not raw then
+        value = url.unescape(value)
+        value = url.escape(value)
       end
-    elseif value == true then
-      query[#query+1] = encode_args_value(key, raw and true or nil, raw)
-    elseif value ~= false and value ~= nil or raw then
-      value = tostring(value)
-      if value ~= "" then
-        query[#query+1] = encode_args_value(key, value, raw)
-      elseif raw or value == "" then
-        query[#query+1] = key
-      end
+      return fmt("%s=%s", key, value)
+    else
+      return key
     end
   end
 
-  return table_concat(query, "&")
+  --- Encode a Lua table to a querystring
+  -- Tries to mimic ngx_lua's `ngx.encode_args`, but also percent-encode querystring values.
+  -- Supports multi-value query args, boolean values.
+  -- It also supports encoding for bodies (only because it is used in http_client for specs.
+  -- @TODO drop and use `ngx.encode_args` once it implements percent-encoding.
+  -- @see https://github.com/Mashape/kong/issues/749
+  -- @param[type=table] args A key/value table containing the query args to encode.
+  -- @param[type=boolean] raw If true, will not percent-encode any key/value and will ignore special boolean rules.
+  -- @treturn string A valid querystring (without the prefixing '?')
+  function _M.encode_args(args, raw)
+    local query = {}
+    local keys = {}
+
+    for k in pairs(args) do
+      keys[#keys+1] = k
+    end
+
+    sort(keys)
+
+    for _, key in ipairs(keys) do
+      local value = args[key]
+      if type(value) == "table" then
+        for _, sub_value in ipairs(value) do
+          query[#query+1] = encode_args_value(key, sub_value, raw)
+        end
+      elseif value == true then
+        query[#query+1] = encode_args_value(key, raw and true or nil, raw)
+      elseif value ~= false and value ~= nil or raw then
+        value = tostring(value)
+        if value ~= "" then
+          query[#query+1] = encode_args_value(key, value, raw)
+        elseif raw or value == "" then
+          query[#query+1] = key
+        end
+      end
+    end
+
+    return concat(query, "&")
+  end
 end
 
 --- Checks whether a request is https or was originally https (but already terminated).
@@ -278,7 +344,7 @@ function _M.add_error(errors, k, v)
       errors[k] = setmetatable({errors[k]}, err_list_mt)
     end
 
-    table_insert(errors[k], v)
+    insert(errors[k], v)
   else
     errors[k] = v
   end
@@ -291,14 +357,14 @@ end
 -- loading failed for another reason (eg: syntax error).
 -- @param module_name Path of the module to load (ex: kong.plugins.keyauth.api).
 -- @return success A boolean indicating wether the module was found.
--- @return module The retrieved module.
+-- @return module The retrieved module, or the error in case of a failure
 function _M.load_module_if_exists(module_name)
   local status, res = pcall(require, module_name)
   if status then
     return true, res
   -- Here we match any character because if a module has a dash '-' in its name, we would need to escape it.
-  elseif type(res) == "string" and string_find(res, "module '"..module_name.."' not found", nil, true) then
-    return false
+  elseif type(res) == "string" and find(res, "module '"..module_name.."' not found", nil, true) then
+    return false, res
   else
     error(res)
   end
