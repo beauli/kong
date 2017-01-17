@@ -34,10 +34,8 @@ lua_package_cpath '${{LUA_PACKAGE_CPATH}};;';
 lua_code_cache ${{LUA_CODE_CACHE}};
 lua_max_running_timers 4096;
 lua_max_pending_timers 16384;
+lua_shared_dict kong 4m;
 lua_shared_dict cache ${{MEM_CACHE_SIZE}};
-lua_shared_dict reports_locks 100k;
-lua_shared_dict cluster_locks 100k;
-lua_shared_dict cluster_autojoin_locks 100k;
 lua_shared_dict cache_locks 100k;
 lua_shared_dict cassandra 1m;
 lua_shared_dict cassandra_prepared 5m;
@@ -60,7 +58,8 @@ init_worker_by_lua_block {
 server {
     server_name kong;
     listen ${{PROXY_LISTEN}};
-    error_page 500 502 503 504 /50x;
+    error_page 404 408 411 412 413 414 417 /kong_error_handler;
+    error_page 500 502 503 504 /kong_error_handler;
 
 > if ssl then
     listen ${{PROXY_LISTEN_SSL}} ssl;
@@ -100,7 +99,7 @@ server {
         }
     }
 
-    location = /50x {
+    location = /kong_error_handler {
         internal;
         content_by_lua_block {
             require('kong.core.error_handlers')(ngx)
@@ -125,7 +124,6 @@ server {
                 ngx.exit(204)
             end
 
-            ngx.log(ngx.DEBUG, 'Loading Admin API endpoints')
             require('lapis').serve('kong.api')
         }
     }
