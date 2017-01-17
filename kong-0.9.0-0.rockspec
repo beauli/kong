@@ -169,6 +169,14 @@ build = {
     ["kong.plugins.rate-limiting.dao.cassandra"] = "kong/plugins/rate-limiting/dao/cassandra.lua",
     ["kong.plugins.rate-limiting.dao.postgres"] = "kong/plugins/rate-limiting/dao/postgres.lua",
 
+    ["kong.plugins.ex-rate-limiting.migrations.cassandra"] = "kong/plugins/ex-rate-limiting/migrations/cassandra.lua",
+    ["kong.plugins.ex-rate-limiting.migrations.postgres"] = "kong/plugins/ex-rate-limiting/migrations/postgres.lua",
+    ["kong.plugins.ex-rate-limiting.handler"] = "kong/plugins/ex-rate-limiting/handler.lua",
+    ["kong.plugins.ex-rate-limiting.schema"] = "kong/plugins/ex-rate-limiting/schema.lua",
+    ["kong.plugins.ex-rate-limiting.policies"] = "kong/plugins/ex-rate-limiting/policies.lua",
+    ["kong.plugins.ex-rate-limiting.dao.cassandra"] = "kong/plugins/ex-rate-limiting/dao/cassandra.lua",
+    ["kong.plugins.ex-rate-limiting.dao.postgres"] = "kong/plugins/ex-rate-limiting/dao/postgres.lua",
+
     ["kong.plugins.response-ratelimiting.migrations.cassandra"] = "kong/plugins/response-ratelimiting/migrations/cassandra.lua",
     ["kong.plugins.response-ratelimiting.migrations.postgres"] = "kong/plugins/response-ratelimiting/migrations/postgres.lua",
     ["kong.plugins.response-ratelimiting.handler"] = "kong/plugins/response-ratelimiting/handler.lua",
