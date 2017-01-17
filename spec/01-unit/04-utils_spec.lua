@@ -2,8 +2,27 @@ local utils = require "kong.tools.utils"
 
 describe("Utils", function()
 
-  it("should retrieve the hostname", function()
-    assert.truthy(utils.get_hostname())
+  describe("get_hostname()", function()
+    it("should retrieve the hostname", function()
+      assert.is_string(utils.get_hostname())
+    end)
+  end)
+
+  describe("get_system_infos()", function()
+    it("retrieves various host infos", function()
+      local infos = utils.get_system_infos()
+      assert.is_number(infos.cores)
+      assert.is_string(infos.hostname)
+      assert.is_string(infos.uname)
+      assert.not_matches("\n$", infos.hostname)
+      assert.not_matches("\n$", infos.uname)
+    end)
+    it("caches the result", function()
+      assert.equal(
+        utils.get_system_infos(),
+        utils.get_system_infos()
+      )
+    end)
   end)
 
   describe("is_valid_uuid()", function()
@@ -294,15 +313,12 @@ describe("Utils", function()
           loaded, mod = utils.load_module_if_exists("kong.does.not.exist")
         end)
         assert.False(loaded)
-        assert.falsy(mod)
+        assert.is.string(mod)
       end)
       it("should throw an error if the module is invalid", function()
-        local loaded, mod
         assert.has.errors(function()
-          loaded, mod = utils.load_module_if_exists("spec.fixtures.invalid-module")
+          utils.load_module_if_exists("spec.fixtures.invalid-module")
         end)
-        assert.falsy(loaded)
-        assert.falsy(mod)
       end)
       it("should load a module if it was found and valid", function()
         local loaded, mod

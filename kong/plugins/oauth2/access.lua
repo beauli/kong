@@ -1,5 +1,5 @@
 local url = require "socket.url"
-local json = require "cjson"
+local cjson = require "cjson.safe"
 local utils = require "kong.tools.utils"
 local cache = require "kong.tools.database_cache"
 local pl_stringx = require "pl.stringx"
@@ -89,12 +89,13 @@ end
 local function retrieve_parameters()
   ngx.req.read_body()
   -- OAuth2 parameters could be in both the querystring or body
-  local body_parameters
+  local body_parameters, err
   local content_type = req_get_headers()[CONTENT_TYPE]
   if content_type and string_find(content_type:lower(), "multipart/form-data", nil, true) then
     body_parameters = Multipart(ngx.req.get_body_data(), content_type):get_all()
   elseif content_type and string_find(content_type:lower(), "application/json", nil, true) then
-    body_parameters = json.decode(ngx.req.get_body_data())
+    body_parameters, err = cjson.decode(ngx.req.get_body_data())
+    if err then body_parameters = {} end
   else
     body_parameters = ngx.req.get_post_args()
   end
@@ -132,7 +133,7 @@ local function authorize(conf)
     response_params = {[ERROR] = "access_denied", error_description = err or "You must use HTTPS"}
   else
     if conf.provision_key ~= parameters.provision_key then
-      response_params = {[ERROR] = "invalid_provision_key", error_description = "Invalid Kong provision_key"}
+      response_params = {[ERROR] = "invalid_provision_key", error_description = "Invalid provision_key"}
     elseif not parameters.authenticated_userid or utils.strip(parameters.authenticated_userid) == "" then
       response_params = {[ERROR] = "invalid_authenticated_userid", error_description = "Missing authenticated_userid parameter"}
     else
@@ -306,7 +307,7 @@ local function issue_token(conf)
       elseif grant_type == GRANT_CLIENT_CREDENTIALS then
         -- Only check the provision_key if the authenticated_userid is being set
         if parameters.authenticated_userid and conf.provision_key ~= parameters.provision_key then
-          response_params = {[ERROR] = "invalid_provision_key", error_description = "Invalid Kong provision_key"}
+          response_params = {[ERROR] = "invalid_provision_key", error_description = "Invalid provision_key"}
         else
           -- Check scopes
           local ok, scopes = retrieve_scopes(parameters, conf)
@@ -319,7 +320,7 @@ local function issue_token(conf)
       elseif grant_type == GRANT_PASSWORD then
         -- Check that it comes from the right client
         if conf.provision_key ~= parameters.provision_key then
-          response_params = {[ERROR] = "invalid_provision_key", error_description = "Invalid Kong provision_key"}
+          response_params = {[ERROR] = "invalid_provision_key", error_description = "Invalid provision_key"}
         elseif not parameters.authenticated_userid or utils.strip(parameters.authenticated_userid) == "" then
           response_params = {[ERROR] = "invalid_authenticated_userid", error_description = "Missing authenticated_userid parameter"}
         else

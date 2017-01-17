@@ -69,6 +69,14 @@ local function hash_to_array(t)
       arr[#arr+1] = {name = k, value = v}
     end
   end
+
+  -- FIXME: temporary workardound
+  -- remove once https://github.com/openresty/lua-cjson/pull/16
+  -- is included in a formal OpenResty release.
+  if #arr == 0 then
+    return cjson.empty_array
+  end
+
   return arr
 end
 
@@ -130,7 +138,7 @@ function _M:add_entry(_ngx, req_body_str, resp_body_str)
   -- stick to what the request really contains, since it was
   -- already read anyways.
   local post_data, response_content
-  local req_body_size, resp_body_size = 0, 0
+  local req_body_size, resp_body_size
 
   if self.log_bodies then
     if req_body_str then
@@ -150,6 +158,9 @@ function _M:add_entry(_ngx, req_body_str, resp_body_str)
         mimeType = resp_content_type
       }
     end
+  else
+    req_body_size = tonumber(request_content_len) or 0
+    resp_body_size = tonumber(resp_content_len) or 0
   end
 
   -- timings
