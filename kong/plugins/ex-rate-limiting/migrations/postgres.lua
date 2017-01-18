@@ -1,5 +1,46 @@
 return {
   {
+    name="2017-01-18-202800_init_ratelimiting",
+    up = [[
+      CREATE TABLE IF NOT EXISTS exratelimiting_request(
+        id SERIAL,
+        api_id uuid,
+        identifier_type text,
+        identifier_value text,
+        ip text,
+        request_uri text,
+        timestamp timestamp without time zone,
+        PRIMARY KEY (id)
+      );
+
+      CREATE OR REPLACE FUNCTION insert_exratelimiting_request(app_id uuid, identifier_type text, identifier_value text,ip text,request_uri text, date timestamp with time zone) RETURNS VOID AS $$
+      BEGIN
+        LOOP
+          
+            INSERT INTO exratelimiting_request(
+              api_id, 
+              identifier_type,
+              identifier_value,
+              ip,
+              request_uri,
+              timestamp
+            ) 
+            VALUES(
+              app_id, 
+              identifier_type, 
+              identifier_value,
+              ip,
+              request_uri,
+              date
+            );
+            RETURN;
+        END LOOP;
+      END;
+
+      $$ LANGUAGE 'plpgsql';
+    ]]
+  },
+  {
     name = "2015-08-03-132400_init_ratelimiting",
     up = [[
       CREATE TABLE IF NOT EXISTS ratelimiting_metrics(

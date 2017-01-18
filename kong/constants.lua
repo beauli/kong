@@ -3,7 +3,8 @@ local plugins = {
   "file-log", "http-log", "key-auth", "hmac-auth", "basic-auth", "ip-restriction",
   "galileo", "request-transformer", "response-transformer",
   "request-size-limiting", "rate-limiting", "response-ratelimiting", "syslog",
-  "loggly", "datadog", "runscope", "ldap-auth", "statsd", "bot-detection"
+  "loggly", "datadog", "runscope", "ldap-auth", "statsd", "bot-detection",
+  "es-log","ex-rate-limiting"
 }
 
 local plugin_map = {}

@@ -48,13 +48,13 @@ return {
   },
   ["cluster"] = {
     increment = function(conf, api_id, identifier, current_timestamp, value)
-      local _, stmt_err = singletons.dao.ratelimiting_metrics:increment(api_id, identifier, current_timestamp, value)
+      local _, stmt_err = singletons.dao.exratelimiting_metrics:increment(api_id, identifier, current_timestamp, value)
       if stmt_err then
         ngx_log(ngx.ERR, "failed to increment: ", tostring(stmt_err))
       end
     end,
     usage = function(conf, api_id, identifier, current_timestamp, name)
-      local current_metric, err = singletons.dao.ratelimiting_metrics:find(api_id, identifier, current_timestamp, name)
+      local current_metric, err = singletons.dao.exratelimiting_metrics:find(api_id, identifier, current_timestamp, name)
       if err then
         return nil, err
       end

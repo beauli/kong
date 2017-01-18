@@ -67,4 +67,4 @@ function _M:count()
   return _M.super.count(self, _M.table, nil, _M.schema)
 end
 
-return {ratelimiting_metrics = _M}
+return {exratelimiting_metrics = _M}

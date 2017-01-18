@@ -47,4 +47,13 @@ function _M:count()
   return _M.super.count(self, _M.table, nil, _M.schema)
 end
 
-return {ratelimiting_metrics = _M}
+function _M:record_request(api_id,identifier_type,identifier_value,ip,request_uri,current_timestamp)
+  local query = fmt("SELECT insert_exratelimiting_request('%s','%s','%s','%s','%s', to_timestamp('%s') at time zone 'UTC')",
+                        api_id, identifier_type,identifier_value,ip,request_uri, current_timestamp/1000)
+  local res, err = self:query(query)
+  if err then
+    return nil, err
+  end
+end
+
+return {exratelimiting_metrics = _M}
