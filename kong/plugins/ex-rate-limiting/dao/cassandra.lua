@@ -67,4 +67,38 @@ function _M:count()
   return _M.super.count(self, _M.table, nil, _M.schema)
 end
 
+function _M:record_request(api_id,identifier_type,identifier_value,ip,request_uri,current_timestamp)
+  local periods = timestamp.get_timestamps(current_timestamp)
+  local options = self:_get_conn_options()
+  local session, err = cassandra.spawn_session(options)
+  if err then
+    ngx.log(ngx.ERR, "[ex-rate-limiting] could not spawn session to Cassandra: "..tostring(err))
+    return nil, err
+  end
+
+  local ok = true
+  
+  local res, err = session:execute([[
+    INSERT INTO exratelimiting_request(id,api_id,identifier_type,identifier_value,ip,request_uri,timestamp) 
+    VALUES(?,?,?,?,?,?,?)
+  ]], {
+    now(),
+    cassandra.uuid(api_id),
+    identifier_type,
+    identifier_value,
+    ip,
+    request_uri,
+    cassandra.timestamp(timestamp)
+  })
+  if not res then
+    ok = false
+    ngx.log(ngx.ERR, "[ex-rate-limiting] could not log request " + ": "..tostring(err))
+  end
+
+
+  session:set_keep_alive()
+
+  return ok
+end
+
 return {exratelimiting_metrics = _M}

@@ -1,5 +1,20 @@
 return {
   {
+    name = "2017-01-22-101800_init_ratelimiting",
+    up = [[
+      CREATE TABLE IF NOT EXISTS exratelimiting_request(
+        id timeuuid,
+        api_id uuid,
+        identifier_type text,
+        identifier_value text,
+        ip text,
+        request_uri text,
+        timestamp timestamp,
+        PRIMARY KEY (id)
+      );
+    ]]
+  },
+  {
     name = "2015-08-03-132400_init_ratelimiting",
     up = [[
       CREATE TABLE IF NOT EXISTS ratelimiting_metrics(
